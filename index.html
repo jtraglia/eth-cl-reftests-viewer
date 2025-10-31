@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ethereum Consensus Layer Reference Tests</title>
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Prism for syntax highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-okaidia.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+
+  <!-- Font Awesome for icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- JSZip for creating zip files -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body>
+  <header class="header-container">
+    <div class="header-left">
+      <h1>Ethereum Consensus Layer Reference Tests</h1>
+      <select id="versionSelect" class="version-select" aria-label="Select version">
+        <option value="">Loading versions...</option>
+      </select>
+    </div>
+
+    <div class="toggle-container" role="group" aria-label="Theme toggle">
+      <i class="fas fa-sun" aria-hidden="true"></i>
+      <label class="toggle-switch" for="darkModeToggle">
+        <input type="checkbox" id="darkModeToggle" aria-label="Toggle dark mode">
+        <span class="toggle-slider" aria-hidden="true"></span>
+      </label>
+      <i class="fas fa-moon" aria-hidden="true"></i>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <!-- Sidebar navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Search tests..." aria-label="Search tests">
+        <button id="searchClear" class="hidden" aria-label="Clear search">&times;</button>
+      </div>
+
+      <div class="preset-filters" id="presetFilters"></div>
+
+      <div class="fork-filters" id="forkFilters"></div>
+
+      <div class="runner-filters" id="runnerFilters"></div>
+
+      <div class="tree-container" id="tree"></div>
+    </aside>
+
+    <!-- Resize handle -->
+    <div class="resize-handle" id="resizeHandle"></div>
+
+    <!-- Main content area -->
+    <main class="content">
+      <div id="welcome" class="welcome-screen">
+        <h2>Welcome</h2>
+        <p>Select a test from the navigation tree to view its details.</p>
+      </div>
+
+      <div id="testViewer" class="test-viewer hidden">
+        <div class="test-header">
+          <h2 id="testTitle"></h2>
+          <button id="downloadTestButton" class="download-test-button" title="Download test as zip">
+            <i class="fas fa-download"></i> Download Test
+          </button>
+        </div>
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <div id="testContent" class="test-content"></div>
+      </div>
+
+      <div id="loading" class="loading hidden">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>Loading test data...</span>
+      </div>
+
+      <div id="error" class="error-message hidden"></div>
+    </main>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  viewer:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      - ./data:/usr/share/nginx/html/data:ro
+    environment:
+      - TZ=UTC

@@ -1,0 +1,17 @@
+{
+  "name": "eth-spec-test-viewer",
+  "version": "2.0.0",
+  "description": "Ethereum Consensus Specification Test Viewer",
+  "scripts": {
+    "prepare": "node scripts/prepare.js",
+    "serve": "npx http-server -p 8080",
+    "docker:build": "docker build -t eth-spec-test-viewer .",
+    "docker:run": "docker run -p 8080:80 eth-spec-test-viewer",
+    "docker:compose": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": ["ethereum", "consensus", "specs", "tests"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {}
+}
