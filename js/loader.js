@@ -52,9 +52,22 @@ export async function loadTestFiles(version, testPath, files) {
       const isBinary = filename.endsWith('.ssz_snappy') || filename.endsWith('.ssz');
 
       let content;
+      let yamlContent = null;
+
       if (isBinary) {
         // Load as arraybuffer for binary files
         content = await response.arrayBuffer();
+
+        // Try to load the corresponding YAML file if it exists
+        const yamlPath = `${filePath}.yaml`;
+        try {
+          const yamlResponse = await fetch(yamlPath);
+          if (yamlResponse.ok) {
+            yamlContent = await yamlResponse.text();
+          }
+        } catch (e) {
+          // YAML file doesn't exist, which is fine
+        }
       } else {
         // Load as text for YAML/text files
         content = await response.text();
@@ -64,7 +77,8 @@ export async function loadTestFiles(version, testPath, files) {
         name: filename,
         content: content,
         isBinary: isBinary,
-        size: content.byteLength || content.length
+        size: content.byteLength || content.length,
+        yamlContent: yamlContent  // Deserialized YAML content if available
       });
     } catch (error) {
       console.error(`Error loading ${filename}:`, error);

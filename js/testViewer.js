@@ -73,6 +73,16 @@ function createFileBox(file) {
   sizeEl.className = 'file-size';
   sizeEl.textContent = formatBytes(file.size);
 
+  // Add hex/yaml toggle button for binary files with YAML content
+  if (file.isBinary && file.yamlContent) {
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'file-toggle-button';
+    toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Hex';
+    toggleBtn.title = 'Toggle between hex and human-readable view';
+    toggleBtn.dataset.viewMode = 'hex';
+    header.appendChild(toggleBtn);
+  }
+
   const downloadBtn = document.createElement('button');
   downloadBtn.className = 'file-download-button';
   downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
@@ -108,6 +118,29 @@ function createFileBox(file) {
 
   codeBox.appendChild(codeContent);
   contentContainer.appendChild(codeBox);
+
+  // Set up toggle button if available
+  if (file.isBinary && file.yamlContent) {
+    const toggleBtn = header.querySelector('.file-toggle-button');
+    toggleBtn.onclick = (e) => {
+      e.stopPropagation();
+      const currentMode = toggleBtn.dataset.viewMode;
+
+      if (currentMode === 'hex') {
+        // Switch to YAML view
+        codeContent.className = 'language-yaml';
+        codeContent.textContent = file.yamlContent;
+        toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Human-readable';
+        toggleBtn.dataset.viewMode = 'yaml';
+      } else {
+        // Switch to hex view
+        codeContent.className = 'language-text';
+        codeContent.textContent = formatHexPreview(file.content);
+        toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Hex';
+        toggleBtn.dataset.viewMode = 'hex';
+      }
+    };
+  }
 
   // Toggle functionality
   header.addEventListener('click', () => {

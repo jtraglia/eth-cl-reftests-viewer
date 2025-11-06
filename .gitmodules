@@ -1,0 +1,4 @@
+[submodule "consensus-specs"]
+	path = consensus-specs
+	url = https://github.com/jtraglia/consensus-specs.git
+	branch = ssz-debug-tools

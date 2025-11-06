@@ -11,7 +11,10 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process');
+const { promisify } = require('util');
+
+const execAsync = promisify(exec);
 
 const GITHUB_REPO = 'ethereum/consensus-specs';
 const PRESETS = ['general', 'minimal', 'mainnet'];
@@ -162,6 +165,147 @@ function parseTestPath(testPath) {
 }
 
 /**
+ * Recursively find all .ssz_snappy files
+ */
+function findSSZFiles(dir) {
+  const results = [];
+
+  function walk(currentPath) {
+    const entries = fs.readdirSync(currentPath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentPath, entry.name);
+
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith('.ssz_snappy')) {
+        results.push(fullPath);
+      }
+    }
+  }
+
+  walk(dir);
+  return results;
+}
+
+/**
+ * Deserialize a single SSZ file
+ */
+async function deserializeSingleFile(sszFile, yamlFile, scriptPath, consensusSpecsPath) {
+  try {
+    const { stdout, stderr } = await execAsync(
+      `cd "${consensusSpecsPath}" && uv run python "${scriptPath}" "${sszFile}" "${yamlFile}"`,
+      { timeout: 30000, maxBuffer: 1024 * 1024 }
+    );
+    return { status: 'success' };
+  } catch (error) {
+    // Check exit code - Python script exits with 2 for "skip this file"
+    const exitCode = error.code || error.exitCode || (error.killed ? null : 1);
+    if (exitCode === 2) {
+      return { status: 'skipped' };
+    } else {
+      return { status: 'error', error };
+    }
+  }
+}
+
+/**
+ * Deserialize SSZ files to YAML using Python script (with parallel processing)
+ */
+async function deserializeSSZFiles(outputDir) {
+  console.log('\nDeserializing SSZ files to YAML...');
+
+  const scriptPath = path.join(__dirname, 'deserialize_ssz.py');
+  const consensusSpecsPath = path.resolve(__dirname, '../consensus-specs');
+
+  // Find all .ssz_snappy files using filesystem API
+  console.log('Finding SSZ files...');
+  const allSszFiles = findSSZFiles(outputDir);
+  console.log(`Found ${allSszFiles.length} total SSZ files`);
+
+  // Filter out files to process
+  const filesToProcess = [];
+  let skippedGeneric = 0;
+  let alreadyExists = 0;
+
+  for (const sszFile of allSszFiles) {
+    // Skip ssz_generic tests entirely - these don't have known types
+    if (sszFile.includes('/ssz_generic/')) {
+      skippedGeneric++;
+      continue;
+    }
+
+    const yamlFile = sszFile.replace('.ssz_snappy', '.ssz_snappy.yaml');
+
+    // Skip if YAML already exists
+    if (fs.existsSync(yamlFile)) {
+      alreadyExists++;
+      continue;
+    }
+
+    filesToProcess.push({ sszFile, yamlFile });
+  }
+
+  console.log(`Skipping ${skippedGeneric} ssz_generic files`);
+  console.log(`Skipping ${alreadyExists} already processed files`);
+  console.log(`Processing ${filesToProcess.length} files in parallel...\n`);
+
+  let successCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+  let firstErrors = [];
+
+  const BATCH_SIZE = 20; // Process 20 files at a time
+  const totalBatches = Math.ceil(filesToProcess.length / BATCH_SIZE);
+
+  console.log(`Starting ${totalBatches} batches...\n`);
+
+  for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+    const start = batchIdx * BATCH_SIZE;
+    const end = Math.min(start + BATCH_SIZE, filesToProcess.length);
+    const batch = filesToProcess.slice(start, end);
+
+    // Process batch in parallel
+    const promises = batch.map(({ sszFile, yamlFile }) =>
+      deserializeSingleFile(sszFile, yamlFile, scriptPath, consensusSpecsPath)
+    );
+
+    const results = await Promise.all(promises);
+
+    // Count results
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === 'success') {
+        successCount++;
+      } else if (result.status === 'skipped') {
+        skippedCount++;
+      } else {
+        errorCount++;
+        if (firstErrors.length < 3) {
+          firstErrors.push({ file: batch[i].sszFile, error: result.error });
+        }
+      }
+    }
+
+    // Report progress every batch
+    const processed = end;
+    const percent = Math.round((processed / filesToProcess.length) * 100);
+    console.log(`  Progress: ${processed}/${filesToProcess.length} (${percent}%) - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`);
+  }
+
+  // Log first few errors
+  if (firstErrors.length > 0) {
+    console.error('\nFirst few errors:');
+    for (const { file, error } of firstErrors) {
+      console.error(`\n${path.basename(file)}:`);
+      console.error(error.stderr?.toString() || error.stdout?.toString() || error.message);
+    }
+  }
+
+  console.log(`\nDeserialization complete: ${successCount} success, ${skippedCount} skipped, ${errorCount} errors (${skippedGeneric} ssz_generic skipped, ${alreadyExists} already existed)`);
+}
+
+/**
  * Build hierarchical manifest structure
  */
 function buildManifest(testCases) {
@@ -277,6 +421,9 @@ async function main() {
 
     // Download and extract tests directly to output directory
     await downloadAndExtractTests(version, outputDir);
+
+    // Deserialize SSZ files to YAML
+    await deserializeSSZFiles(outputDir);
 
     // Find all test cases in output directory
     console.log('Finding test cases...');

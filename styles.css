@@ -633,6 +633,25 @@ input:checked + .toggle-slider:before {
   opacity: 0.8;
 }
 
+.file-toggle-button {
+  background-color: var(--success-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: 0.5rem;
+}
+
+.file-toggle-button:hover {
+  opacity: 0.8;
+}
+
 .file-content {
   max-height: 100000px;
   overflow: hidden;
