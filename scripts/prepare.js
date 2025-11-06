@@ -291,6 +291,16 @@ async function deserializeSSZFiles(outputDir) {
     const processed = end;
     const percent = Math.round((processed / filesToProcess.length) * 100);
     console.log(`  Progress: ${processed}/${filesToProcess.length} (${percent}%) - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`);
+
+    // Show errors immediately for first batch
+    if (batchIdx === 0 && firstErrors.length > 0) {
+      console.error('\nFirst errors from batch 1:');
+      for (const { file, error } of firstErrors) {
+        console.error(`\n${path.basename(file)}:`);
+        console.error(error.stderr?.toString() || error.stdout?.toString() || error.message);
+      }
+      console.log(''); // blank line
+    }
   }
 
   // Log first few errors
