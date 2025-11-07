@@ -79,10 +79,16 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     Args:
         test_type: The test type (e.g., 'operations', 'epoch_processing')
         test_suite: The test suite name (e.g., 'attestation', 'justification_and_finalization')
-        filename: The SSZ filename (e.g., 'pre.ssz_snappy', 'post.ssz_snappy') - reserved for future use
+        filename: The SSZ filename (e.g., 'pre.ssz_snappy', 'post.ssz_snappy', 'blocks_0.ssz_snappy')
     """
-    # Note: filename parameter is reserved for future use to distinguish between
-    # different SSZ files in the same test (e.g., pre vs post state)
+    # Check filename patterns first - these apply across multiple test types
+    if filename.startswith('blocks_') or filename == 'block.ssz_snappy':
+        return 'SignedBeaconBlock'
+
+    # pre/post state files are always BeaconState
+    if filename in ['pre.ssz_snappy', 'post.ssz_snappy', 'pre_epoch.ssz_snappy', 'post_epoch.ssz_snappy']:
+        return 'BeaconState'
+
     # For operations tests, the test_suite is usually the operation name
     # and maps directly to the SSZ type (with proper capitalization)
     if test_type == 'operations':
@@ -103,32 +109,6 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
         }
         if test_suite in type_map:
             return type_map[test_suite]
-
-    # For epoch_processing tests, need to determine type from filename
-    if test_type == 'epoch_processing':
-        # These tests have pre.ssz_snappy (BeaconState) and post.ssz_snappy (BeaconState)
-        return 'BeaconState'
-
-    # For sanity tests
-    if test_type == 'sanity':
-        if test_suite in ['blocks', 'slots']:
-            return 'BeaconState'
-
-    # For fork tests
-    if test_type == 'fork':
-        return 'BeaconState'
-
-    # For transition tests
-    if test_type == 'transition':
-        return 'BeaconState'
-
-    # For finality tests
-    if test_type == 'finality':
-        return 'BeaconState'
-
-    # For random tests
-    if test_type == 'random':
-        return 'BeaconState'
 
     # Default: try capitalizing the test_suite name
     # Convert snake_case to PascalCase

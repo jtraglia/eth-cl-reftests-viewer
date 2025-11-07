@@ -283,20 +283,20 @@ async function deserializeSSZFiles(outputDir) {
       const result = results[i];
       if (result.status === 'success') {
         successCount++;
-        // Print success details
-        console.log(`\n${'='.repeat(80)}`);
-        console.log(`SUCCESS #${successCount}:`);
-        console.log(`File: ${batch[i].sszFile}`);
-        console.log(`${'='.repeat(80)}`);
-        if (result.stdout) {
-          console.log('STDOUT:');
-          console.log(result.stdout.toString());
-        }
-        if (result.stderr) {
-          console.log('STDERR:');
-          console.log(result.stderr.toString());
-        }
-        console.log(`${'='.repeat(80)}\n`);
+        // Print success details (uncomment to debug successful deserializations)
+        // console.log(`\n${'='.repeat(80)}`);
+        // console.log(`SUCCESS #${successCount}:`);
+        // console.log(`File: ${batch[i].sszFile}`);
+        // console.log(`${'='.repeat(80)}`);
+        // if (result.stdout) {
+        //   console.log('STDOUT:');
+        //   console.log(result.stdout.toString());
+        // }
+        // if (result.stderr) {
+        //   console.log('STDERR:');
+        //   console.log(result.stderr.toString());
+        // }
+        // console.log(`${'='.repeat(80)}\n`);
       } else if (result.status === 'skipped') {
         skippedCount++;
       } else {
