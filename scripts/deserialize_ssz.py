@@ -11,10 +11,51 @@ Example:
 
 import sys
 import importlib
+import re
+import yaml
 from pathlib import Path
 
 # Import the debug tools from consensus-specs
 from eth2spec.debug.tools import get_ssz_object_from_ssz_encoded, output_ssz_to_file
+
+
+def load_previous_fork_mapping():
+    """
+    Parse PREVIOUS_FORK_OF from constants.py to get fork transition mapping.
+    Returns a dict mapping fork -> previous_fork (e.g., 'altair' -> 'phase0')
+    """
+    constants_path = Path(__file__).parent.parent / 'consensus-specs' / 'tests' / 'core' / 'pyspec' / 'eth2spec' / 'test' / 'helpers' / 'constants.py'
+
+    if not constants_path.exists():
+        # Return empty dict if file doesn't exist - will use current fork
+        return {}
+
+    content = constants_path.read_text()
+
+    # Parse PREVIOUS_FORK_OF dictionary
+    previous_fork_of = {}
+
+    # Find the PREVIOUS_FORK_OF dictionary in the file
+    match = re.search(r'PREVIOUS_FORK_OF\s*=\s*\{([^}]+)\}', content, re.DOTALL)
+    if match:
+        dict_content = match.group(1)
+        # Parse lines like: ALTAIR: PHASE0,
+        for line in dict_content.split('\n'):
+            line = line.strip()
+            if ':' in line and not line.startswith('#'):
+                parts = line.split(':')
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip().rstrip(',')
+                    if value and value != 'None':
+                        # Convert to lowercase (e.g., ALTAIR -> altair)
+                        previous_fork_of[key.lower()] = value.lower()
+
+    return previous_fork_of
+
+
+# Load fork mapping at module level
+PREVIOUS_FORK_OF = load_previous_fork_mapping()
 
 
 def parse_ssz_path(file_path: Path):
@@ -58,6 +99,48 @@ def parse_ssz_path(file_path: Path):
     # Get the filename to determine which SSZ object we're looking for
     filename = file_path.name  # e.g., 'serialized.ssz_snappy', 'pre.ssz_snappy', 'post.ssz_snappy'
 
+    # For fork tests with pre.ssz_snappy, use the previous fork
+    actual_fork = fork
+    if test_type == 'fork' and filename == 'pre.ssz_snappy':
+        if fork in PREVIOUS_FORK_OF:
+            actual_fork = PREVIOUS_FORK_OF[fork]
+            print(f"Fork test detected: using previous fork '{actual_fork}' for pre.ssz_snappy (current fork: '{fork}')")
+        else:
+            print(f"Warning: No previous fork found for '{fork}', using current fork")
+
+    # For transition tests with blocks_*.ssz_snappy, determine fork from meta.yaml
+    if test_type == 'transition' and filename.startswith('blocks_'):
+        # Parse block index from filename (e.g., blocks_0.ssz_snappy -> 0)
+        try:
+            block_index = int(filename.split('_')[1].split('.')[0])
+
+            # Read meta.yaml to get fork_block and post_fork
+            meta_path = file_path.parent / 'meta.yaml'
+            if meta_path.exists():
+                with open(meta_path, 'r') as f:
+                    meta = yaml.safe_load(f)
+                    post_fork = meta.get('post_fork', fork).lower()
+                    fork_block = meta.get('fork_block')
+
+                    if fork_block is not None:
+                        if block_index <= fork_block:
+                            # Use pre-fork (previous fork of post_fork)
+                            if post_fork in PREVIOUS_FORK_OF:
+                                actual_fork = PREVIOUS_FORK_OF[post_fork]
+                                print(f"Transition test: block {block_index} <= fork_block {fork_block}, using pre-fork '{actual_fork}'")
+                            else:
+                                print(f"Warning: No previous fork found for post_fork '{post_fork}'")
+                        else:
+                            # Use post-fork
+                            actual_fork = post_fork
+                            print(f"Transition test: block {block_index} > fork_block {fork_block}, using post-fork '{actual_fork}'")
+                    else:
+                        print(f"Warning: fork_block not found in meta.yaml, using current fork '{fork}'")
+            else:
+                print(f"Warning: meta.yaml not found at {meta_path}, using current fork '{fork}'")
+        except (ValueError, IndexError) as e:
+            print(f"Warning: Could not parse block index from filename '{filename}': {e}")
+
     # Determine type name based on test type
     if test_type == 'ssz_static':
         # For ssz_static, test_suite IS the type name
@@ -67,7 +150,7 @@ def parse_ssz_path(file_path: Path):
         # Common mappings based on test format specifications
         type_name = derive_type_from_suite(test_type, test_suite, filename)
 
-    return preset, fork, type_name, filename
+    return preset, actual_fork, type_name, filename
 
 
 def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> str:
@@ -81,13 +164,18 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
         test_suite: The test suite name (e.g., 'attestation', 'justification_and_finalization')
         filename: The SSZ filename (e.g., 'pre.ssz_snappy', 'post.ssz_snappy', 'blocks_0.ssz_snappy')
     """
-    # Check filename patterns first - these apply across multiple test types
-    if filename.startswith('blocks_') or filename == 'block.ssz_snappy':
-        return 'SignedBeaconBlock'
-
     # pre/post state files are always BeaconState
     if filename in ['pre.ssz_snappy', 'post.ssz_snappy', 'pre_epoch.ssz_snappy', 'post_epoch.ssz_snappy']:
         return 'BeaconState'
+
+    # Check filename patterns - these apply across multiple test types
+    # In operations/block_header, block.ssz_snappy is BeaconBlock (unsigned)
+    if test_type == 'operations' and test_suite == 'block_header' and filename == 'block.ssz_snappy':
+        return 'BeaconBlock'
+
+    # In other tests, blocks_* and block.ssz_snappy are SignedBeaconBlock
+    if filename.startswith('blocks_') or filename == 'block.ssz_snappy':
+        return 'SignedBeaconBlock'
 
     # For operations tests, the test_suite is usually the operation name
     # and maps directly to the SSZ type (with proper capitalization)
