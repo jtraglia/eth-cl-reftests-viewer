@@ -34,9 +34,10 @@ git submodule update --init --recursive consensus-specs
 # Change to consensus-specs directory
 cd consensus-specs
 
-# Fetch latest from origin
-echo "Fetching from origin..."
-git fetch origin
+# Fetch all refs from origin (branches and tags)
+echo "Fetching all refs from origin..."
+git fetch origin --tags
+git fetch origin '+refs/heads/*:refs/remotes/origin/*'
 
 # Special handling for v1.6.0 - use specific commit with ssz-debug-tools changes
 if [ "$VERSION" = "v1.6.0" ]; then
@@ -45,7 +46,12 @@ if [ "$VERSION" = "v1.6.0" ]; then
   if ! git checkout "$COMMIT"; then
     echo ""
     echo "Error: Failed to checkout commit $COMMIT"
-    exit 1
+    echo "Trying to fetch it explicitly from master..."
+    git fetch origin master
+    if ! git checkout "$COMMIT"; then
+      echo "Error: Still failed to checkout commit $COMMIT"
+      exit 1
+    fi
   fi
 else
   # For other versions, try to checkout the tag
