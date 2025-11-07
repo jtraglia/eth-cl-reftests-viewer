@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const os = require('os');
 const { execSync, exec } = require('child_process');
 const { promisify } = require('util');
 
@@ -255,9 +256,10 @@ async function deserializeSSZFiles(outputDir) {
   let errorCount = 0;
   let firstErrors = [];
 
-  const BATCH_SIZE = 20; // Process 20 files at a time
+  const BATCH_SIZE = os.cpus().length; // Use all CPU cores
   const totalBatches = Math.ceil(filesToProcess.length / BATCH_SIZE);
 
+  console.log(`Using ${BATCH_SIZE} parallel processes (CPU cores: ${os.cpus().length})`);
   console.log(`Starting ${totalBatches} batches...\n`);
 
   for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
