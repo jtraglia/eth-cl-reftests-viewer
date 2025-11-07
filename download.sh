@@ -34,22 +34,33 @@ git submodule update --init --recursive consensus-specs
 # Change to consensus-specs directory
 cd consensus-specs
 
-# Fetch latest tags from origin
-echo "Fetching tags from origin..."
-git fetch origin --tags
+# Fetch latest from origin
+echo "Fetching from origin..."
+git fetch origin
 
-# Try to checkout the specified tag
-echo "Checking out tag $VERSION..."
-if ! git checkout "$VERSION" 2>/dev/null; then
-  echo ""
-  echo "Error: Tag '$VERSION' not found."
-  echo ""
-  echo "Available tags matching '$VERSION':"
-  git tag -l "*${VERSION}*" | head -20
-  echo ""
-  echo "Recent tags:"
-  git tag -l | sort -V | tail -20
-  exit 1
+# Special handling for v1.6.0 - use specific commit with ssz-debug-tools changes
+if [ "$VERSION" = "v1.6.0" ]; then
+  COMMIT="ab09e2e94fb61bc8cf3a24747db0473c2405b2ca"
+  echo "Special handling for v1.6.0: checking out commit $COMMIT..."
+  if ! git checkout "$COMMIT"; then
+    echo ""
+    echo "Error: Failed to checkout commit $COMMIT"
+    exit 1
+  fi
+else
+  # For other versions, try to checkout the tag
+  echo "Checking out tag $VERSION..."
+  if ! git checkout "$VERSION" 2>/dev/null; then
+    echo ""
+    echo "Error: Tag '$VERSION' not found."
+    echo ""
+    echo "Available tags matching '$VERSION':"
+    git tag -l "*${VERSION}*" | head -20
+    echo ""
+    echo "Recent tags (last 20):"
+    git tag -l "v*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+" | sort -V | tail -20
+    exit 1
+  fi
 fi
 
 # Clean previous build
