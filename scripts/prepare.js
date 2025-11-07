@@ -195,7 +195,7 @@ async function deserializeSingleFile(sszFile, yamlFile, scriptPath, consensusSpe
   try {
     const { stdout, stderr } = await execAsync(
       `cd "${consensusSpecsPath}" && uv run python "${scriptPath}" "${sszFile}" "${yamlFile}"`,
-      { timeout: 30000, maxBuffer: 1024 * 1024 }
+      { timeout: 600000, maxBuffer: 1024 * 1024 }  // 10 minute timeout for large files
     );
     return { status: 'success', stdout, stderr };
   } catch (error) {

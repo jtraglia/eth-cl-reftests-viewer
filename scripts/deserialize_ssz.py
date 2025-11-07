@@ -190,9 +190,13 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     if filename == 'body.ssz_snappy':
         return 'BeaconBlockBody'
 
+    # signed_envelope.ssz_snappy is always SignedExecutionPayloadEnvelope
+    if filename == 'signed_envelope.ssz_snappy':
+        return 'SignedExecutionPayloadEnvelope'
+
     # Check filename patterns - these apply across multiple test types
-    # In operations/block_header, block.ssz_snappy is BeaconBlock (unsigned)
-    if test_type == 'operations' and test_suite == 'block_header' and filename == 'block.ssz_snappy':
+    # In operations/block_header and operations/execution_payload_bid, block.ssz_snappy is BeaconBlock (unsigned)
+    if test_type == 'operations' and test_suite in ['block_header', 'execution_payload_bid'] and filename == 'block.ssz_snappy':
         return 'BeaconBlock'
 
     # In other tests, blocks_* and block.ssz_snappy are SignedBeaconBlock
