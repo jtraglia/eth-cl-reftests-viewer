@@ -34,10 +34,23 @@ git submodule update --init --recursive consensus-specs
 # Change to consensus-specs directory
 cd consensus-specs
 
-# Checkout the specified tag
+# Fetch latest tags from origin
+echo "Fetching tags from origin..."
+git fetch origin --tags
+
+# Try to checkout the specified tag
 echo "Checking out tag $VERSION..."
-git fetch --tags
-git checkout "$VERSION"
+if ! git checkout "$VERSION" 2>/dev/null; then
+  echo ""
+  echo "Error: Tag '$VERSION' not found."
+  echo ""
+  echo "Available tags matching '$VERSION':"
+  git tag -l "*${VERSION}*" | head -20
+  echo ""
+  echo "Recent tags:"
+  git tag -l | sort -V | tail -20
+  exit 1
+fi
 
 # Clean previous build
 echo "Cleaning previous build..."
