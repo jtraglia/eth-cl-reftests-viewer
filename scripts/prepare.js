@@ -198,7 +198,7 @@ async function deserializeSingleFile(sszFile, yamlFile, scriptPath, consensusSpe
       `cd "${consensusSpecsPath}" && uv run python "${scriptPath}" "${sszFile}" "${yamlFile}"`,
       { timeout: 30000, maxBuffer: 1024 * 1024 }
     );
-    return { status: 'success' };
+    return { status: 'success', stdout, stderr };
   } catch (error) {
     // Check exit code - Python script exits with 2 for "skip this file"
     const exitCode = error.code || error.exitCode || (error.killed ? null : 1);
@@ -226,13 +226,13 @@ async function deserializeSSZFiles(outputDir) {
 
   // Filter out files to process
   const filesToProcess = [];
-  let skippedGeneric = 0;
+  let skippedGeneral = 0;
   let alreadyExists = 0;
 
   for (const sszFile of allSszFiles) {
-    // Skip ssz_generic tests entirely - these don't have known types
-    if (sszFile.includes('/ssz_generic/')) {
-      skippedGeneric++;
+    // Skip general directory tests (includes ssz_generic, bls, etc.)
+    if (sszFile.includes('/tests/general/')) {
+      skippedGeneral++;
       continue;
     }
 
@@ -247,14 +247,13 @@ async function deserializeSSZFiles(outputDir) {
     filesToProcess.push({ sszFile, yamlFile });
   }
 
-  console.log(`Skipping ${skippedGeneric} ssz_generic files`);
+  console.log(`Skipping ${skippedGeneral} general directory files`);
   console.log(`Skipping ${alreadyExists} already processed files`);
   console.log(`Processing ${filesToProcess.length} files in parallel...\n`);
 
   let successCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
-  let firstErrors = [];
 
   const BATCH_SIZE = os.cpus().length; // Use all CPU cores
   const totalBatches = Math.ceil(filesToProcess.length / BATCH_SIZE);
@@ -267,6 +266,11 @@ async function deserializeSSZFiles(outputDir) {
     const end = Math.min(start + BATCH_SIZE, filesToProcess.length);
     const batch = filesToProcess.slice(start, end);
 
+    // Print which files are being processed
+    for (const { sszFile } of batch) {
+      console.log(`Processing: ${sszFile}`);
+    }
+
     // Process batch in parallel
     const promises = batch.map(({ sszFile, yamlFile }) =>
       deserializeSingleFile(sszFile, yamlFile, scriptPath, consensusSpecsPath)
@@ -274,47 +278,59 @@ async function deserializeSSZFiles(outputDir) {
 
     const results = await Promise.all(promises);
 
-    // Count results
+    // Count results and show output immediately
     for (let i = 0; i < results.length; i++) {
       const result = results[i];
       if (result.status === 'success') {
         successCount++;
+        // Print success details
+        console.log(`\n${'='.repeat(80)}`);
+        console.log(`SUCCESS #${successCount}:`);
+        console.log(`File: ${batch[i].sszFile}`);
+        console.log(`${'='.repeat(80)}`);
+        if (result.stdout) {
+          console.log('STDOUT:');
+          console.log(result.stdout.toString());
+        }
+        if (result.stderr) {
+          console.log('STDERR:');
+          console.log(result.stderr.toString());
+        }
+        console.log(`${'='.repeat(80)}\n`);
       } else if (result.status === 'skipped') {
         skippedCount++;
       } else {
         errorCount++;
-        if (firstErrors.length < 3) {
-          firstErrors.push({ file: batch[i].sszFile, error: result.error });
+        // Print full error details immediately
+        console.error(`\n${'='.repeat(80)}`);
+        console.error(`ERROR #${errorCount}:`);
+        console.error(`File: ${batch[i].sszFile}`);
+        console.error(`${'='.repeat(80)}`);
+        if (result.error.stdout) {
+          console.error('STDOUT:');
+          console.error(result.error.stdout.toString());
         }
+        if (result.error.stderr) {
+          console.error('STDERR:');
+          console.error(result.error.stderr.toString());
+        }
+        if (!result.error.stdout && !result.error.stderr) {
+          console.error('ERROR MESSAGE:');
+          console.error(result.error.message);
+        }
+        console.error(`${'='.repeat(80)}\n`);
       }
     }
 
-    // Report progress every batch
-    const processed = end;
-    const percent = Math.round((processed / filesToProcess.length) * 100);
-    console.log(`  Progress: ${processed}/${filesToProcess.length} (${percent}%) - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`);
-
-    // Show errors immediately for first batch
-    if (batchIdx === 0 && firstErrors.length > 0) {
-      console.error('\nFirst errors from batch 1:');
-      for (const { file, error } of firstErrors) {
-        console.error(`\n${path.basename(file)}:`);
-        console.error(error.stderr?.toString() || error.stdout?.toString() || error.message);
-      }
-      console.log(''); // blank line
+    // Report progress every 100 batches
+    if ((batchIdx + 1) % 100 === 0) {
+      const processed = end;
+      const percent = Math.round((processed / filesToProcess.length) * 100);
+      console.log(`  Progress: ${processed}/${filesToProcess.length} (${percent}%) - ${successCount} success, ${skippedCount} skipped, ${errorCount} errors`);
     }
   }
 
-  // Log first few errors
-  if (firstErrors.length > 0) {
-    console.error('\nFirst few errors:');
-    for (const { file, error } of firstErrors) {
-      console.error(`\n${path.basename(file)}:`);
-      console.error(error.stderr?.toString() || error.stdout?.toString() || error.message);
-    }
-  }
-
-  console.log(`\nDeserialization complete: ${successCount} success, ${skippedCount} skipped, ${errorCount} errors (${skippedGeneric} ssz_generic skipped, ${alreadyExists} already existed)`);
+  console.log(`\nDeserialization complete: ${successCount} success, ${skippedCount} skipped, ${errorCount} errors (${skippedGeneral} general directory skipped, ${alreadyExists} already existed)`);
 }
 
 /**
