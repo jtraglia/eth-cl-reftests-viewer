@@ -72,16 +72,16 @@ function downloadFile(url, dest) {
 /**
  * Download and extract test archives for a version
  */
-async function downloadAndExtractTests(version, outputDir) {
+async function downloadAndExtractTests(version, extractDir) {
   console.log('Downloading and extracting test archives...\n');
 
-  // Ensure output directory exists
-  fs.mkdirSync(outputDir, { recursive: true });
+  // Ensure extract directory exists
+  fs.mkdirSync(extractDir, { recursive: true });
 
   for (const preset of PRESETS) {
     const filename = `${preset}.tar.gz`;
     const url = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${filename}`;
-    const dest = path.join(outputDir, filename);
+    const dest = path.join(extractDir, filename);
 
     console.log(`Downloading ${filename}...`);
 
@@ -89,8 +89,8 @@ async function downloadAndExtractTests(version, outputDir) {
       await downloadFile(url, dest);
       console.log(`Extracting ${filename}...`);
 
-      // Extract directly to output directory
-      execSync(`tar -xzf "${dest}" -C "${outputDir}"`, { stdio: 'inherit' });
+      // Extract to extract directory (tar contains tests/ directory)
+      execSync(`tar -xzf "${dest}" -C "${extractDir}"`, { stdio: 'inherit' });
 
       // Remove tar file
       fs.unlinkSync(dest);
@@ -145,23 +145,22 @@ function findTestCases(dir, basePath = '') {
 
 /**
  * Parse test path to extract hierarchy
- * Path format: tests/{preset}/{fork}/{test_type}/{test_suite}/{config}/{test_case}
+ * Path format: {preset}/{fork}/{test_type}/{test_suite}/{config}/{test_case}
  */
 function parseTestPath(testPath) {
   const parts = testPath.split(path.sep);
 
-  if (parts.length < 7) {
+  if (parts.length < 6) {
     return null; // Invalid path
   }
 
-  // Skip "tests" directory at index 0
   return {
-    preset: parts[1],
-    fork: parts[2],
-    testType: parts[3],
-    testSuite: parts[4],
-    config: parts[5],
-    testCase: parts[6]
+    preset: parts[0],
+    fork: parts[1],
+    testType: parts[2],
+    testSuite: parts[3],
+    config: parts[4],
+    testCase: parts[5]
   };
 }
 
@@ -436,7 +435,7 @@ async function main() {
   }
 
   const versionDir = path.join(dataDir, version);
-  const outputDir = path.join(versionDir, 'tests');
+  const testsDir = path.join(versionDir, 'tests');
 
   console.log('Ethereum Consensus Layer Reference Tests');
   console.log('=========================================\n');
@@ -447,15 +446,15 @@ async function main() {
     // Create version directory
     fs.mkdirSync(versionDir, { recursive: true });
 
-    // Download and extract tests directly to output directory
-    await downloadAndExtractTests(version, outputDir);
+    // Download and extract tests to version directory (tar contains tests/ directory)
+    await downloadAndExtractTests(version, versionDir);
 
     // Deserialize SSZ files to YAML
-    await deserializeSSZFiles(outputDir);
+    await deserializeSSZFiles(testsDir);
 
-    // Find all test cases in output directory
+    // Find all test cases in tests directory
     console.log('Finding test cases...');
-    const testCases = findTestCases(outputDir);
+    const testCases = findTestCases(testsDir);
     console.log(`Found ${testCases.length} test cases\n`);
 
     // Build manifest
@@ -473,7 +472,7 @@ async function main() {
 
     console.log('\n✓ All done!');
     console.log(`\nVersion:  ${version}`);
-    console.log(`Tests:    ${outputDir}`);
+    console.log(`Tests:    ${testsDir}`);
     console.log(`Manifest: ${manifestPath}`);
   } catch (error) {
     console.error(`\n✗ Error: ${error.message}`);

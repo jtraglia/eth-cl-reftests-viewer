@@ -63,13 +63,13 @@ def parse_ssz_path(file_path: Path):
     Parse an SSZ file path to extract preset, fork, test_type, test_suite and derive type name.
 
     Expected path format:
-    .../tests/tests/{preset}/{fork}/{test_type}/{test_suite}/.../{file}.ssz_snappy
+    .../tests/{preset}/{fork}/{test_type}/{test_suite}/.../{file}.ssz_snappy
 
     For ssz_static tests:
-    .../tests/tests/{preset}/{fork}/ssz_static/{type_name}/...
+    .../tests/{preset}/{fork}/ssz_static/{type_name}/...
 
     For other tests (operations, epoch_processing, etc.):
-    .../tests/tests/{preset}/{fork}/{test_type}/{test_suite}/...
+    .../tests/{preset}/{fork}/{test_type}/{test_suite}/...
     The type is derived from the test_suite name (usually by capitalizing it)
 
     Returns:
@@ -77,19 +77,19 @@ def parse_ssz_path(file_path: Path):
     """
     parts = file_path.parts
 
-    # Find the 'tests' directory index - look for "tests/tests" pattern
+    # Find the 'tests' directory index
     tests_idx = -1
-    for i in range(len(parts) - 1):
-        if parts[i] == 'tests' and parts[i + 1] == 'tests':
-            tests_idx = i + 1  # Point to the second 'tests'
+    for i in range(len(parts)):
+        if parts[i] == 'tests':
+            tests_idx = i
             break
 
     if tests_idx == -1:
-        raise ValueError(f"Path must contain 'tests/tests' directories: {file_path}")
+        raise ValueError(f"Path must contain 'tests' directory: {file_path}")
 
-    # After the second 'tests', we expect: {preset}/{fork}/{test_type}/{test_suite}/...
+    # After 'tests', we expect: {preset}/{fork}/{test_type}/{test_suite}/...
     if len(parts) < tests_idx + 5:
-        raise ValueError(f"Path too short, expected format: tests/tests/{{preset}}/{{fork}}/{{test_type}}/{{test_suite}}/...: {file_path}")
+        raise ValueError(f"Path too short, expected format: tests/{{preset}}/{{fork}}/{{test_type}}/{{test_suite}}/...: {file_path}")
 
     preset = parts[tests_idx + 1]    # e.g., 'mainnet', 'minimal', 'general'
     fork = parts[tests_idx + 2]      # e.g., 'phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'eip7805'
@@ -107,6 +107,24 @@ def parse_ssz_path(file_path: Path):
             print(f"Fork test detected: using previous fork '{actual_fork}' for pre.ssz_snappy (current fork: '{fork}')")
         else:
             print(f"Warning: No previous fork found for '{fork}', using current fork")
+
+    # For transition tests with pre.ssz_snappy, use the pre-fork
+    if test_type == 'transition' and filename == 'pre.ssz_snappy':
+        # Read meta.yaml to get post_fork
+        meta_path = file_path.parent / 'meta.yaml'
+        if meta_path.exists():
+            with open(meta_path, 'r') as f:
+                meta = yaml.safe_load(f)
+                post_fork = meta.get('post_fork', fork).lower()
+
+                # Use previous fork of post_fork
+                if post_fork in PREVIOUS_FORK_OF:
+                    actual_fork = PREVIOUS_FORK_OF[post_fork]
+                    print(f"Transition test: using pre-fork '{actual_fork}' for pre.ssz_snappy (post_fork: '{post_fork}')")
+                else:
+                    print(f"Warning: No previous fork found for post_fork '{post_fork}', using current fork")
+        else:
+            print(f"Warning: meta.yaml not found at {meta_path}, using current fork '{fork}'")
 
     # For transition tests with blocks_*.ssz_snappy, determine fork from meta.yaml
     if test_type == 'transition' and filename.startswith('blocks_'):
