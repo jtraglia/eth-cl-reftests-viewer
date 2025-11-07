@@ -186,6 +186,10 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     if filename in ['pre.ssz_snappy', 'post.ssz_snappy', 'pre_epoch.ssz_snappy', 'post_epoch.ssz_snappy']:
         return 'BeaconState'
 
+    # body.ssz_snappy is always BeaconBlockBody
+    if filename == 'body.ssz_snappy':
+        return 'BeaconBlockBody'
+
     # Check filename patterns - these apply across multiple test types
     # In operations/block_header, block.ssz_snappy is BeaconBlock (unsigned)
     if test_type == 'operations' and test_suite == 'block_header' and filename == 'block.ssz_snappy':
