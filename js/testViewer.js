@@ -41,9 +41,29 @@ export function displayTest(test) {
   const content = document.getElementById('testContent');
   content.innerHTML = '';
 
-  // Display each file
+  // Create a map of ssz_snappy files to their yaml companions
+  const fileMap = new Map();
+  const yamlFiles = new Set();
+
   for (const file of files) {
-    const fileBox = createFileBox(file);
+    if (file.name.endsWith('.ssz_snappy.yaml')) {
+      // This is a companion YAML file
+      const sszName = file.name.replace('.yaml', '');
+      yamlFiles.add(file.name);
+      fileMap.set(sszName, file);
+    }
+  }
+
+  // Display each file, combining ssz_snappy with their yaml companions
+  for (const file of files) {
+    // Skip standalone .yaml files (they'll be paired with their ssz_snappy)
+    if (yamlFiles.has(file.name)) {
+      continue;
+    }
+
+    // Check if this ssz_snappy file has a yaml companion
+    const yamlCompanion = fileMap.get(file.name);
+    const fileBox = createFileBox(file, yamlCompanion);
     content.appendChild(fileBox);
   }
 
@@ -53,8 +73,10 @@ export function displayTest(test) {
 
 /**
  * Create a collapsible file box
+ * @param {Object} file - The primary file
+ * @param {Object} yamlCompanion - Optional YAML companion file for binary files
  */
-function createFileBox(file) {
+function createFileBox(file, yamlCompanion = null) {
   const container = document.createElement('div');
   container.className = 'file-box';
 
@@ -73,28 +95,53 @@ function createFileBox(file) {
   sizeEl.className = 'file-size';
   sizeEl.textContent = formatBytes(file.size);
 
-  // Add hex/yaml toggle button for binary files with YAML content
-  if (file.isBinary && file.yamlContent) {
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'file-toggle-button';
-    toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Hex';
-    toggleBtn.title = 'Toggle between hex and human-readable view';
-    toggleBtn.dataset.viewMode = 'hex';
-    header.appendChild(toggleBtn);
+  // Create hex/yaml toggle buttons for binary files with YAML companion
+  let hexBtn = null;
+  let yamlBtn = null;
+  let toggleGroup = null;
+  if (file.isBinary && yamlCompanion) {
+    toggleGroup = document.createElement('div');
+    toggleGroup.className = 'view-toggle-group';
+
+    hexBtn = document.createElement('button');
+    hexBtn.className = 'view-toggle-button active';
+    hexBtn.textContent = 'hex';
+    hexBtn.dataset.view = 'hex';
+
+    yamlBtn = document.createElement('button');
+    yamlBtn.className = 'view-toggle-button';
+    yamlBtn.textContent = 'yaml';
+    yamlBtn.dataset.view = 'yaml';
+
+    toggleGroup.appendChild(hexBtn);
+    toggleGroup.appendChild(yamlBtn);
   }
 
   const downloadBtn = document.createElement('button');
   downloadBtn.className = 'file-download-button';
   downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
   downloadBtn.title = 'Download file';
+
+  // Track current view mode for files with toggle
+  let currentViewMode = 'hex'; // default
+
   downloadBtn.onclick = (e) => {
     e.stopPropagation();
-    downloadFileFromContent(file.name, file.content, file.isBinary);
+    if (yamlCompanion && currentViewMode === 'yaml') {
+      // Download YAML file
+      downloadFileFromContent(file.name + '.yaml', yamlCompanion.content, false);
+    } else {
+      // Download original file
+      downloadFileFromContent(file.name, file.content, file.isBinary);
+    }
   };
 
   header.appendChild(icon);
   header.appendChild(filenameEl);
   header.appendChild(sizeEl);
+  if (toggleGroup) {
+    header.appendChild(toggleGroup);
+  }
   header.appendChild(downloadBtn);
 
   // Content (collapsed by default)
@@ -119,26 +166,26 @@ function createFileBox(file) {
   codeBox.appendChild(codeContent);
   contentContainer.appendChild(codeBox);
 
-  // Set up toggle button if available
-  if (file.isBinary && file.yamlContent) {
-    const toggleBtn = header.querySelector('.file-toggle-button');
-    toggleBtn.onclick = (e) => {
+  // Set up toggle buttons if available
+  if (file.isBinary && yamlCompanion && hexBtn && yamlBtn) {
+    hexBtn.onclick = (e) => {
       e.stopPropagation();
-      const currentMode = toggleBtn.dataset.viewMode;
+      // Switch to hex view
+      codeContent.className = 'language-text';
+      codeContent.textContent = formatHexPreview(file.content);
+      hexBtn.classList.add('active');
+      yamlBtn.classList.remove('active');
+      currentViewMode = 'hex';
+    };
 
-      if (currentMode === 'hex') {
-        // Switch to YAML view
-        codeContent.className = 'language-yaml';
-        codeContent.textContent = file.yamlContent;
-        toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Human-readable';
-        toggleBtn.dataset.viewMode = 'yaml';
-      } else {
-        // Switch to hex view
-        codeContent.className = 'language-text';
-        codeContent.textContent = formatHexPreview(file.content);
-        toggleBtn.innerHTML = '<i class="fas fa-sync-alt"></i> View: Hex';
-        toggleBtn.dataset.viewMode = 'hex';
-      }
+    yamlBtn.onclick = (e) => {
+      e.stopPropagation();
+      // Switch to YAML view
+      codeContent.className = 'language-yaml';
+      codeContent.textContent = yamlCompanion.content;
+      yamlBtn.classList.add('active');
+      hexBtn.classList.remove('active');
+      currentViewMode = 'yaml';
     };
   }
 
