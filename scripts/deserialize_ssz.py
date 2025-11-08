@@ -173,8 +173,9 @@ def parse_ssz_path(file_path: Path):
 
     # For light_client/data_collection tests with fork transitions
     if test_type == 'light_client' and test_suite == 'data_collection':
-        # Check if filename has epoch/slot number (e.g., update_100_0xhash.ssz_snappy)
-        if any(filename.startswith(prefix) for prefix in ['update_', 'optimistic_update_', 'finality_update_', 'bootstrap_']):
+        # Check if filename has epoch/slot number
+        # Examples: update_100_*, finality_update_100_*, block_100_*
+        if any(filename.startswith(prefix) for prefix in ['update_', 'optimistic_update_', 'finality_update_', 'bootstrap_', 'block_']):
             try:
                 # Parse epoch/slot from filename
                 # Examples:
@@ -299,14 +300,44 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
             return 'PowBlock'
         if filename.startswith('column_'):
             return 'DataColumnSidecar'
+        if filename.startswith('blobs_'):
+            return 'BlobSidecar'
 
-    # Light client and merkle proof tests with object.ssz_snappy
-    if test_type in ['light_client', 'merkle_proof']:
+    # Light client tests
+    if test_type == 'light_client':
+        # data_collection tests with block_* files
+        if test_suite == 'data_collection' and filename.startswith('block_'):
+            return 'SignedBeaconBlock'
+
+        # single_merkle_proof with object.ssz_snappy
         if test_suite == 'single_merkle_proof' and filename == 'object.ssz_snappy':
             # Type is determined from the parent directory name
             # Path format: .../single_merkle_proof/{TypeName}/test_name/object.ssz_snappy
             # The test_suite in parse_ssz_path is actually the next level, which should be the type
             # But we need to extract it differently - this will be handled in parse_ssz_path
+            pass  # Will be handled specially in parse_ssz_path
+
+        # update_ranking tests
+        if test_suite == 'update_ranking':
+            # These tests have update_* and updates_* files (List of LightClientUpdate)
+            if filename.startswith(('update_', 'updates_')):
+                return 'LightClientUpdate'
+
+        # sync tests
+        if test_suite == 'sync':
+            # These tests have various light client files
+            if filename.startswith('update_'):
+                return 'LightClientUpdate'
+            if filename.startswith('optimistic_update_'):
+                return 'LightClientOptimisticUpdate'
+            if filename.startswith('finality_update_'):
+                return 'LightClientFinalityUpdate'
+            if filename.startswith('bootstrap_'):
+                return 'LightClientBootstrap'
+
+    # Merkle proof tests with object.ssz_snappy
+    if test_type == 'merkle_proof':
+        if test_suite == 'single_merkle_proof' and filename == 'object.ssz_snappy':
             pass  # Will be handled specially in parse_ssz_path
 
     # Rewards tests - deltas files
