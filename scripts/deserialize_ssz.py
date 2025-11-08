@@ -171,10 +171,20 @@ def parse_ssz_path(file_path: Path):
         except (ValueError, IndexError) as e:
             print(f"Warning: Could not parse block index from filename '{filename}': {e}")
 
-    # For light_client/data_collection tests with fork transitions
-    if test_type == 'light_client' and test_suite == 'data_collection':
+    # For light_client tests with fork transitions
+    if test_type == 'light_client':
+        # Get test case name from path (e.g., deneb_electra_reorg_aligned, deneb_fork)
+        test_case = parts[tests_idx + 6] if len(parts) > tests_idx + 6 else ''
+
+        # Parse fork names from test case (e.g., deneb_electra -> deneb, electra)
+        fork_names = []
+        for potential_fork in ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']:
+            if potential_fork in test_case.lower():
+                fork_names.append(potential_fork)
+
         # Check if filename has epoch/slot number
         # Examples: update_100_*, finality_update_100_*, block_100_*
+        has_slot_number = False
         if any(filename.startswith(prefix) for prefix in ['update_', 'optimistic_update_', 'finality_update_', 'bootstrap_', 'block_']):
             try:
                 # Parse epoch/slot from filename
@@ -182,6 +192,7 @@ def parse_ssz_path(file_path: Path):
                 #   update_100_0xhash.ssz_snappy -> 100
                 #   finality_update_100_0xhash.ssz_snappy -> 100
                 #   optimistic_update_100_0xhash.ssz_snappy -> 100
+                #   block_100_0xhash.ssz_snappy -> 100
                 parts_name = filename.split('_')
 
                 # Find the first numeric part after the prefix
@@ -193,38 +204,37 @@ def parse_ssz_path(file_path: Path):
                     except ValueError:
                         continue
 
-                if epoch_or_slot is None:
-                    raise ValueError(f"Could not find epoch number in filename '{filename}'")
+                # Only apply slot-based fork detection if we found a slot number
+                if epoch_or_slot is not None:
+                    has_slot_number = True
+                    # Read config.yaml to get fork epoch boundaries
+                    config_path = file_path.parent / 'config.yaml'
+                    if config_path.exists():
+                        with open(config_path, 'r') as f:
+                            config = yaml.safe_load(f)
 
-                # Read config.yaml to get fork epoch boundaries
-                config_path = file_path.parent / 'config.yaml'
-                if config_path.exists():
-                    with open(config_path, 'r') as f:
-                        config = yaml.safe_load(f)
+                        # Get SLOTS_PER_EPOCH from config or preset
+                        # Mainnet: 32, Minimal: 8
+                        preset_base = config.get('PRESET_BASE', 'mainnet').lower()
+                        slots_per_epoch = 8 if preset_base == 'minimal' else 32
 
-                    # Get SLOTS_PER_EPOCH from config or preset
-                    # Mainnet: 32, Minimal: 8
-                    preset_base = config.get('PRESET_BASE', 'mainnet').lower()
-                    slots_per_epoch = 8 if preset_base == 'minimal' else 32
+                        # Convert slot to epoch (light_client files use slot numbers)
+                        epoch = epoch_or_slot // slots_per_epoch
 
-                    # Convert slot to epoch (light_client files use slot numbers)
-                    epoch = epoch_or_slot // slots_per_epoch
+                        # Start with directory fork, then check if we should advance to later forks
+                        # Build list of all known forks in order
+                        all_forks = ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']
 
-                    # Get test case name from path (e.g., deneb_electra_reorg_aligned)
-                    test_case = parts[tests_idx + 6] if len(parts) > tests_idx + 6 else ''
+                        # Find the current directory fork position
+                        try:
+                            current_fork_idx = all_forks.index(fork)
+                        except ValueError:
+                            current_fork_idx = 0
 
-                    # Parse fork names from test case (e.g., deneb_electra -> deneb, electra)
-                    fork_names = []
-                    for potential_fork in ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']:
-                        if potential_fork in test_case.lower():
-                            fork_names.append(potential_fork)
-
-                    if len(fork_names) >= 1:
-                        # Determine which fork to use based on the epoch and fork boundaries
-                        # Check each fork in the test name against config fork epochs
-                        selected_fork = fork_names[0]  # Default to first fork
-
-                        for fork_name in fork_names:
+                        # Check each fork starting from directory fork
+                        selected_fork = fork  # Default to directory fork
+                        for i in range(current_fork_idx, len(all_forks)):
+                            fork_name = all_forks[i]
                             fork_epoch_key = f"{fork_name.upper()}_FORK_EPOCH"
                             if fork_epoch_key in config:
                                 fork_epoch = config[fork_epoch_key]
@@ -237,9 +247,20 @@ def parse_ssz_path(file_path: Path):
 
                         if selected_fork != fork:
                             actual_fork = selected_fork
-                            print(f"Light client data_collection: test '{test_case}' at slot {epoch_or_slot} (epoch {epoch}), using fork '{actual_fork}' (directory fork: '{fork}')")
+                            print(f"Light client {test_suite}: test '{test_case}' at slot {epoch_or_slot} (epoch {epoch}), using fork '{actual_fork}' (directory fork: '{fork}')")
             except (ValueError, IndexError) as e:
-                print(f"Warning: Could not parse epoch from light_client filename '{filename}': {e}")
+                print(f"Warning: Could not parse slot from light_client filename '{filename}': {e}")
+
+        # If no slot number in filename but fork names found in test case
+        # (e.g., sync tests like "deneb_fork", "electra_fork", or update files with hashes)
+        if not has_slot_number and len(fork_names) >= 1:
+            # For tests with single fork name (e.g., "deneb_fork"), use that fork
+            # For tests with multiple fork names (e.g., "deneb_electra_fork"), use the last one
+            # This handles transition tests where the data is typically in the target fork
+            selected_fork = fork_names[-1]  # Use the last (newest) fork
+            if selected_fork != fork:
+                actual_fork = selected_fork
+                print(f"Light client {test_suite}: test '{test_case}' using fork '{actual_fork}' (directory fork: '{fork}')")
 
     # Determine type name based on test type
     if test_type == 'ssz_static':
