@@ -228,6 +228,8 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
             return 'AttesterSlashing'
         if filename.startswith('pow_block_'):
             return 'PowBlock'
+        if filename.startswith('column_'):
+            return 'DataColumnSidecar'
 
     # Light client and merkle proof tests with object.ssz_snappy
     if test_type in ['light_client', 'merkle_proof']:
@@ -242,6 +244,22 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     if test_type == 'rewards':
         if filename.endswith('_deltas.ssz_snappy'):
             return 'Deltas'
+
+    # Genesis tests - deposits files
+    if test_type == 'genesis':
+        if filename.startswith('deposits_'):
+            return 'Deposit'
+
+    # Light client tests - data_collection test suite
+    if test_type == 'light_client' and test_suite == 'data_collection':
+        if filename.startswith('update_'):
+            return 'LightClientUpdate'
+        if filename.startswith('optimistic_update_'):
+            return 'LightClientOptimisticUpdate'
+        if filename.startswith('finality_update_'):
+            return 'LightClientFinalityUpdate'
+        if filename.startswith('bootstrap_'):
+            return 'LightClientBootstrap'
 
     # Check filename patterns - these apply across multiple test types
     # In operations/block_header and operations/execution_payload_bid, block.ssz_snappy is BeaconBlock (unsigned)
