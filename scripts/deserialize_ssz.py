@@ -176,11 +176,16 @@ def parse_ssz_path(file_path: Path):
         # Get test case name from path (e.g., deneb_electra_reorg_aligned, deneb_fork)
         test_case = parts[tests_idx + 6] if len(parts) > tests_idx + 6 else ''
 
-        # Parse fork names from test case (e.g., deneb_electra -> deneb, electra)
+        # Initialize fork_names
         fork_names = []
-        for potential_fork in ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']:
-            if potential_fork in test_case.lower():
-                fork_names.append(potential_fork)
+
+        # Special case: initial_state.ssz_snappy should always use the directory fork
+        # It represents the starting state before any transitions
+        if filename != 'initial_state.ssz_snappy':
+            # Parse fork names from test case (e.g., deneb_electra -> deneb, electra)
+            for potential_fork in ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']:
+                if potential_fork in test_case.lower():
+                    fork_names.append(potential_fork)
 
         # Check if filename has epoch/slot number
         # Examples: update_100_*, finality_update_100_*, block_100_*
@@ -294,7 +299,7 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
         filename: The SSZ filename (e.g., 'pre.ssz_snappy', 'post.ssz_snappy', 'blocks_0.ssz_snappy')
     """
     # pre/post state files are always BeaconState
-    if filename in ['pre.ssz_snappy', 'post.ssz_snappy', 'pre_epoch.ssz_snappy', 'post_epoch.ssz_snappy']:
+    if filename in ['pre.ssz_snappy', 'post.ssz_snappy', 'pre_epoch.ssz_snappy', 'post_epoch.ssz_snappy', 'initial_state.ssz_snappy']:
         return 'BeaconState'
 
     # body.ssz_snappy is always BeaconBlockBody
