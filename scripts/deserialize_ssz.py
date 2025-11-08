@@ -258,10 +258,12 @@ def parse_ssz_path(file_path: Path):
 
         # If no slot number in filename but fork names found in test case
         # (e.g., sync tests like "deneb_fork", "electra_fork", or update files with hashes)
-        if not has_slot_number and len(fork_names) >= 1:
-            # For tests with single fork name (e.g., "deneb_fork"), use that fork
-            # For tests with multiple fork names (e.g., "deneb_electra_fork"), use the last one
-            # This handles transition tests where the data is typically in the target fork
+        # NOTE: For sync tests, we cannot reliably determine fork from filename alone
+        # since the test data may contain files from both before and after the fork transition
+        # For now, we use the directory fork for sync tests
+        if not has_slot_number and len(fork_names) >= 1 and test_suite != 'sync':
+            # For non-sync tests with single fork name (e.g., in data_collection "deneb_fork")
+            # use that fork. For tests with multiple fork names, use the last one.
             selected_fork = fork_names[-1]  # Use the last (newest) fork
             if selected_fork != fork:
                 actual_fork = selected_fork
@@ -358,7 +360,7 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
                 return 'LightClientOptimisticUpdate'
             if filename.startswith('finality_update_'):
                 return 'LightClientFinalityUpdate'
-            if filename.startswith('bootstrap_'):
+            if filename.startswith('bootstrap_') or filename == 'bootstrap.ssz_snappy':
                 return 'LightClientBootstrap'
 
     # Merkle proof tests with object.ssz_snappy
@@ -479,6 +481,17 @@ def deserialize_ssz_file(input_path: Path, output_path: Path = None):
     print(f"  File: {filename}")
     print()
 
+    # Check if this is a light_client sync test (these may need fork fallback)
+    is_light_client_sync = 'light_client' in str(input_path) and '/sync/' in str(input_path)
+    alternative_forks = []
+
+    if is_light_client_sync:
+        # Extract potential fork names from the path for fallback
+        path_lower = str(input_path).lower()
+        for potential_fork in ['deneb', 'electra', 'capella', 'bellatrix', 'altair']:
+            if potential_fork in path_lower and potential_fork != fork:
+                alternative_forks.append(potential_fork)
+
     # Get the SSZ type class
     ssz_type_class = get_ssz_type_class(preset, fork, type_name)
     print(f"Loaded type: {ssz_type_class}")
@@ -486,9 +499,33 @@ def deserialize_ssz_file(input_path: Path, output_path: Path = None):
 
     # Deserialize the SSZ file
     print(f"Deserializing: {input_path}")
-    ssz_obj = get_ssz_object_from_ssz_encoded(input_path, ssz_type_class)
-    print("Deserialization successful!")
-    print()
+    try:
+        ssz_obj = get_ssz_object_from_ssz_encoded(input_path, ssz_type_class)
+        print("Deserialization successful!")
+        print()
+    except Exception as e:
+        # If deserialization fails and we have alternative forks, try them
+        if is_light_client_sync and alternative_forks:
+            print(f"Deserialization failed with {fork} fork: {e}")
+            print(f"Trying alternative forks: {alternative_forks}")
+
+            for alt_fork in alternative_forks:
+                try:
+                    print(f"  Trying fork: {alt_fork}")
+                    ssz_type_class = get_ssz_type_class(preset, alt_fork, type_name)
+                    ssz_obj = get_ssz_object_from_ssz_encoded(input_path, ssz_type_class)
+                    print(f"Deserialization successful with {alt_fork} fork!")
+                    fork = alt_fork  # Update fork for output
+                    print()
+                    break
+                except Exception as alt_e:
+                    print(f"  Failed with {alt_fork}: {alt_e}")
+                    continue
+            else:
+                # None of the alternative forks worked, re-raise original exception
+                raise e
+        else:
+            raise
 
     # Output to file if requested
     if output_path:
