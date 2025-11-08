@@ -11,6 +11,166 @@ export function displayWelcome(manifest) {
 }
 
 /**
+ * Display a test case skeleton (without content - shows loading state)
+ */
+export function displayTestSkeleton(test) {
+  const { preset, fork, testType, testSuite, config, testCase, fileNames } = test;
+
+  // Hide other views
+  document.getElementById('welcome').classList.add('hidden');
+  document.getElementById('loading').classList.add('hidden');
+  document.getElementById('error').classList.add('hidden');
+
+  // Show test viewer
+  const viewer = document.getElementById('testViewer');
+  viewer.classList.remove('hidden');
+
+  // Set title
+  document.getElementById('testTitle').textContent = testCase;
+
+  // Set breadcrumb
+  document.getElementById('breadcrumb').innerHTML = `
+    <span>${preset}</span> /
+    <span>${fork}</span> /
+    <span>${testType}</span> /
+    <span>${testSuite}</span> /
+    <span>${config}</span>
+  `;
+
+  // Display files as loading skeletons
+  const content = document.getElementById('testContent');
+  content.innerHTML = '';
+
+  // Create a set of YAML companion files to skip
+  const yamlFiles = new Set();
+  for (const filename of fileNames) {
+    if (filename.endsWith('.ssz_snappy.yaml')) {
+      yamlFiles.add(filename);
+    }
+  }
+
+  // Display each file, skipping YAML companions
+  for (const filename of fileNames) {
+    if (yamlFiles.has(filename)) {
+      continue;
+    }
+
+    // Check if this file has a YAML companion
+    const hasYamlCompanion = fileNames.includes(filename + '.yaml');
+    const fileBox = createFileBoxSkeleton(filename, hasYamlCompanion);
+    content.appendChild(fileBox);
+  }
+
+  // Disable download button initially
+  const downloadButton = document.getElementById('downloadTestButton');
+  downloadButton.disabled = true;
+}
+
+/**
+ * Update a file box with loaded content
+ */
+export function updateFileBox(filename, fileData, yamlCompanionData = null) {
+  const fileBox = document.querySelector(`[data-filename="${filename}"]`);
+  if (!fileBox) {
+    console.warn(`File box not found for ${filename}`);
+    return;
+  }
+
+  // Update size in header
+  const sizeEl = fileBox.querySelector('.file-size');
+  if (sizeEl) {
+    sizeEl.textContent = formatBytes(fileData.size);
+  }
+
+  // Update content
+  const contentContainer = fileBox.querySelector('.file-content');
+  const loadingSpinner = contentContainer.querySelector('.loading-spinner');
+  if (loadingSpinner) {
+    loadingSpinner.remove();
+  }
+
+  const codeBox = document.createElement('pre');
+  codeBox.className = 'test-code-box';
+
+  const codeContent = document.createElement('code');
+
+  if (fileData.isBinary) {
+    codeContent.className = 'language-text';
+    codeContent.textContent = formatHexPreview(fileData.content);
+  } else {
+    codeContent.className = 'language-yaml';
+    codeContent.textContent = fileData.content;
+  }
+
+  codeBox.appendChild(codeContent);
+  contentContainer.appendChild(codeBox);
+
+  // Set up toggle buttons if YAML companion exists
+  if (yamlCompanionData) {
+    const hexBtn = fileBox.querySelector('[data-view="hex"]');
+    const yamlBtn = fileBox.querySelector('[data-view="yaml"]');
+
+    if (hexBtn && yamlBtn) {
+      // Enable buttons
+      hexBtn.disabled = false;
+      yamlBtn.disabled = false;
+
+      let currentViewMode = 'hex';
+
+      hexBtn.onclick = (e) => {
+        e.stopPropagation();
+        codeContent.className = 'language-text';
+        codeContent.textContent = formatHexPreview(fileData.content);
+        hexBtn.classList.add('active');
+        yamlBtn.classList.remove('active');
+        currentViewMode = 'hex';
+      };
+
+      yamlBtn.onclick = (e) => {
+        e.stopPropagation();
+        codeContent.className = 'language-yaml';
+        codeContent.textContent = yamlCompanionData.content;
+        yamlBtn.classList.add('active');
+        hexBtn.classList.remove('active');
+        currentViewMode = 'yaml';
+      };
+
+      // Update download button
+      const downloadBtn = fileBox.querySelector('.file-download-button');
+      downloadBtn.disabled = false;
+      downloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (currentViewMode === 'yaml') {
+          downloadFileFromContent(filename + '.yaml', yamlCompanionData.content, false);
+        } else {
+          downloadFileFromContent(filename, fileData.content, fileData.isBinary);
+        }
+      };
+    }
+  } else {
+    // Set up download button for non-binary files
+    const downloadBtn = fileBox.querySelector('.file-download-button');
+    downloadBtn.disabled = false;
+    downloadBtn.onclick = (e) => {
+      e.stopPropagation();
+      downloadFileFromContent(filename, fileData.content, fileData.isBinary);
+    };
+  }
+
+  // Mark as loaded
+  fileBox.classList.add('loaded');
+}
+
+/**
+ * Enable the download test button with loaded files
+ */
+export function enableDownloadTest(testName, files) {
+  setupDownloadTestButton(testName, files);
+  const downloadButton = document.getElementById('downloadTestButton');
+  downloadButton.disabled = false;
+}
+
+/**
  * Display a test case
  */
 export function displayTest(test) {
@@ -69,6 +229,93 @@ export function displayTest(test) {
 
   // Set up download test button
   setupDownloadTestButton(testCase, files);
+}
+
+/**
+ * Create a collapsible file box skeleton (loading state)
+ * @param {string} filename - The filename
+ * @param {boolean} hasYamlCompanion - Whether this file has a YAML companion
+ */
+function createFileBoxSkeleton(filename, hasYamlCompanion = false) {
+  const container = document.createElement('div');
+  container.className = 'file-box';
+  container.dataset.filename = filename;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'file-header';
+
+  const icon = document.createElement('i');
+  icon.className = 'fas fa-chevron-right file-toggle-icon';
+
+  const filenameEl = document.createElement('span');
+  filenameEl.className = 'file-name';
+  filenameEl.textContent = filename;
+
+  const sizeEl = document.createElement('span');
+  sizeEl.className = 'file-size';
+  sizeEl.textContent = '...';
+
+  // Create hex/yaml toggle buttons for binary files with YAML companion
+  const isBinary = filename.endsWith('.ssz_snappy') || filename.endsWith('.ssz');
+  let toggleGroup = null;
+  if (isBinary && hasYamlCompanion) {
+    toggleGroup = document.createElement('div');
+    toggleGroup.className = 'view-toggle-group';
+
+    const hexBtn = document.createElement('button');
+    hexBtn.className = 'view-toggle-button active';
+    hexBtn.textContent = 'hex';
+    hexBtn.dataset.view = 'hex';
+    hexBtn.disabled = true; // Disabled until content loads
+
+    const yamlBtn = document.createElement('button');
+    yamlBtn.className = 'view-toggle-button';
+    yamlBtn.textContent = 'yaml';
+    yamlBtn.dataset.view = 'yaml';
+    yamlBtn.disabled = true; // Disabled until content loads
+
+    toggleGroup.appendChild(hexBtn);
+    toggleGroup.appendChild(yamlBtn);
+  }
+
+  const downloadBtn = document.createElement('button');
+  downloadBtn.className = 'file-download-button';
+  downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+  downloadBtn.title = 'Download file';
+  downloadBtn.disabled = true; // Disabled until content loads
+
+  header.appendChild(icon);
+  header.appendChild(filenameEl);
+  header.appendChild(sizeEl);
+  if (toggleGroup) {
+    header.appendChild(toggleGroup);
+  }
+  header.appendChild(downloadBtn);
+
+  // Content (collapsed by default with loading spinner)
+  const contentContainer = document.createElement('div');
+  contentContainer.className = 'file-content collapsed';
+
+  const loadingSpinner = document.createElement('div');
+  loadingSpinner.className = 'loading-spinner';
+  loadingSpinner.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+  contentContainer.appendChild(loadingSpinner);
+
+  // Toggle functionality
+  header.addEventListener('click', () => {
+    contentContainer.classList.toggle('collapsed');
+    if (contentContainer.classList.contains('collapsed')) {
+      icon.className = 'fas fa-chevron-right file-toggle-icon';
+    } else {
+      icon.className = 'fas fa-chevron-down file-toggle-icon';
+    }
+  });
+
+  container.appendChild(header);
+  container.appendChild(contentContainer);
+
+  return container;
 }
 
 /**

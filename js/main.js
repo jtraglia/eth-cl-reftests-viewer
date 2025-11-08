@@ -3,9 +3,9 @@
  */
 
 import { initDarkMode } from './darkMode.js';
-import { loadVersions, loadManifest, loadTestFiles } from './loader.js';
+import { loadVersions, loadManifest, loadTestFiles, loadTestFilesProgressive } from './loader.js';
 import { buildTree, filterTree } from './tree.js';
-import { displayTest, displayWelcome } from './testViewer.js';
+import { displayTest, displayWelcome, displayTestSkeleton, updateFileBox, enableDownloadTest } from './testViewer.js';
 import { initResizable } from './resizable.js';
 
 // Application state
@@ -103,23 +103,93 @@ async function loadVersionData(version) {
 async function onTestSelect(testPath) {
   const { preset, fork, testType, testSuite, config, testCase, testPath: fullPath, files } = testPath;
 
-  // Show loading state
-  showLoading();
-
   try {
     // Check cache
     const cacheKey = `${state.currentVersion}:${fullPath}`;
     let loadedFiles = state.loadedSuites.get(cacheKey);
 
-    // Load if not cached
-    if (!loadedFiles) {
-      loadedFiles = await loadTestFiles(state.currentVersion, fullPath, files);
-      state.loadedSuites.set(cacheKey, loadedFiles);
+    if (loadedFiles) {
+      // Use cached data - display immediately
+      state.currentTest = { preset, fork, testType, testSuite, config, testCase, files: loadedFiles };
+      displayTest(state.currentTest);
+      return;
     }
 
-    // Display test
-    state.currentTest = { preset, fork, testType, testSuite, config, testCase, files: loadedFiles };
-    displayTest(state.currentTest);
+    // Show test skeleton immediately with loading spinners
+    displayTestSkeleton({
+      preset,
+      fork,
+      testType,
+      testSuite,
+      config,
+      testCase,
+      fileNames: files
+    });
+
+    // Start loading all files in parallel
+    const filePromises = loadTestFilesProgressive(state.currentVersion, fullPath, files);
+
+    // Track loaded files
+    const allLoadedFiles = [];
+    const loadedFileMap = new Map(); // filename -> file data
+
+    // Identify which SSZ files have YAML companions
+    const sszWithYaml = new Set();
+    for (const filePromise of filePromises) {
+      const name = filePromise.name;
+      if (name.endsWith('.ssz_snappy.yaml')) {
+        const sszName = name.replace('.yaml', '');
+        sszWithYaml.add(sszName);
+      }
+    }
+
+    // Process each file as it loads (truly parallel, updates UI progressively)
+    const loadPromises = filePromises.map(filePromise => {
+      return filePromise.promise.then(fileData => {
+        allLoadedFiles.push(fileData);
+        loadedFileMap.set(fileData.name, fileData);
+
+        // Check if this is a YAML companion file
+        if (fileData.name.endsWith('.ssz_snappy.yaml')) {
+          const sszName = fileData.name.replace('.yaml', '');
+
+          // Check if the SSZ file has already loaded
+          if (loadedFileMap.has(sszName)) {
+            const sszFile = loadedFileMap.get(sszName);
+            updateFileBox(sszName, sszFile, fileData);
+          }
+          // Otherwise, the SSZ file will handle it when it loads
+        } else {
+          // This is a primary file
+          // Check if it needs a YAML companion
+          if (sszWithYaml.has(fileData.name)) {
+            const yamlName = fileData.name + '.yaml';
+            const yamlData = loadedFileMap.get(yamlName);
+
+            if (yamlData) {
+              // YAML companion already loaded, update with both
+              updateFileBox(fileData.name, fileData, yamlData);
+            }
+            // Otherwise, YAML companion will trigger update when it loads
+          } else {
+            // No YAML companion, update immediately
+            updateFileBox(fileData.name, fileData);
+          }
+        }
+      }).catch(error => {
+        console.error(`Failed to load ${filePromise.name}:`, error);
+        // Could show error state in the file box here
+      });
+    });
+
+    // Wait for all files to complete, then enable download button
+    await Promise.all(loadPromises);
+
+    // Cache the loaded files
+    state.loadedSuites.set(cacheKey, allLoadedFiles);
+
+    // Enable download button
+    enableDownloadTest(testCase, allLoadedFiles);
 
   } catch (error) {
     showError('Failed to load test data: ' + error.message);

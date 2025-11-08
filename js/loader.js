@@ -29,7 +29,7 @@ export async function loadManifest(version) {
 }
 
 /**
- * Load a test case files
+ * Load a test case files (legacy - fetches sequentially)
  * @param {string} version - Version like "v1.6.0-beta.0"
  * @param {string} testPath - Path like "general/deneb/kzg/verify_blob_kzg_proof/kzg-mainnet/test_name"
  * @param {Array<string>} files - Array of filenames to load
@@ -73,4 +73,52 @@ export async function loadTestFiles(version, testPath, files) {
   }
 
   return loadedFiles;
+}
+
+/**
+ * Load test files progressively (fetches all in parallel)
+ * @param {string} version - Version like "v1.6.0-beta.0"
+ * @param {string} testPath - Path like "general/deneb/kzg/verify_blob_kzg_proof/kzg-mainnet/test_name"
+ * @param {Array<string>} files - Array of filenames to load
+ * @returns {Array<{name: string, isBinary: boolean, promise: Promise}>} Array of file metadata with promises
+ */
+export function loadTestFilesProgressive(version, testPath, files) {
+  return files.map(filename => {
+    const filePath = `data/${version}/tests/${testPath}/${filename}`;
+    const isBinary = filename.endsWith('.ssz_snappy') || filename.endsWith('.ssz');
+
+    // Start fetch immediately (all files fetch in parallel)
+    const promise = (async () => {
+      try {
+        const response = await fetch(filePath);
+
+        if (!response.ok) {
+          throw new Error(`Failed to load: ${response.statusText}`);
+        }
+
+        let content;
+        if (isBinary) {
+          content = await response.arrayBuffer();
+        } else {
+          content = await response.text();
+        }
+
+        return {
+          name: filename,
+          content: content,
+          isBinary: isBinary,
+          size: content.byteLength || content.length
+        };
+      } catch (error) {
+        console.error(`Error loading ${filename}:`, error);
+        throw error;
+      }
+    })();
+
+    return {
+      name: filename,
+      isBinary: isBinary,
+      promise: promise
+    };
+  });
 }
