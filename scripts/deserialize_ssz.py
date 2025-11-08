@@ -171,6 +171,63 @@ def parse_ssz_path(file_path: Path):
         except (ValueError, IndexError) as e:
             print(f"Warning: Could not parse block index from filename '{filename}': {e}")
 
+    # For light_client/data_collection tests with fork transitions
+    if test_type == 'light_client' and test_suite == 'data_collection':
+        # Check if filename has epoch/slot number (e.g., update_100_0xhash.ssz_snappy)
+        if any(filename.startswith(prefix) for prefix in ['update_', 'optimistic_update_', 'finality_update_', 'bootstrap_']):
+            try:
+                # Parse epoch/slot from filename
+                # Examples:
+                #   update_100_0xhash.ssz_snappy -> 100
+                #   finality_update_100_0xhash.ssz_snappy -> 100
+                #   optimistic_update_100_0xhash.ssz_snappy -> 100
+                parts_name = filename.split('_')
+
+                # Find the first numeric part after the prefix
+                epoch_or_slot = None
+                for part in parts_name:
+                    try:
+                        epoch_or_slot = int(part)
+                        break
+                    except ValueError:
+                        continue
+
+                if epoch_or_slot is None:
+                    raise ValueError(f"Could not find epoch number in filename '{filename}'")
+
+                # Read config.yaml to get fork epoch boundaries and slots per epoch
+                config_path = file_path.parent / 'config.yaml'
+                if config_path.exists():
+                    with open(config_path, 'r') as f:
+                        config = yaml.safe_load(f)
+
+                    # Convert slot to epoch (light_client files use slot numbers)
+                    # Slots per epoch is typically 32 for mainnet, 4 or 8 for minimal
+                    # We can infer from DENEB_FORK_EPOCH and the blocks present
+                    slots_per_epoch = 4  # Minimal preset typically uses 4 slots per epoch
+                    epoch = epoch_or_slot // slots_per_epoch
+
+                    # Get test case name from path (e.g., deneb_electra_reorg_aligned)
+                    test_case = parts[tests_idx + 6] if len(parts) > tests_idx + 6 else ''
+
+                    # Parse fork names from test case (e.g., deneb_electra -> deneb, electra)
+                    fork_names = []
+                    for potential_fork in ['phase0', 'altair', 'bellatrix', 'capella', 'deneb', 'electra', 'eip7805', 'fulu', 'gloas']:
+                        if potential_fork in test_case.lower():
+                            fork_names.append(potential_fork)
+
+                    if len(fork_names) >= 1:
+                        # For light_client tests, use the FIRST fork in the test name
+                        # Light client structures may not change between forks even if the test
+                        # spans multiple forks (e.g., deneb_electra tests use Deneb structures throughout)
+                        selected_fork = fork_names[0]
+
+                        if selected_fork != fork:
+                            actual_fork = selected_fork
+                            print(f"Light client data_collection: test '{test_case}' uses fork '{actual_fork}' (directory fork: '{fork}')")
+            except (ValueError, IndexError) as e:
+                print(f"Warning: Could not parse epoch from light_client filename '{filename}': {e}")
+
     # Determine type name based on test type
     if test_type == 'ssz_static':
         # For ssz_static, test_suite IS the type name
