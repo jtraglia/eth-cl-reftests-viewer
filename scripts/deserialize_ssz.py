@@ -377,6 +377,8 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     if test_type == 'genesis':
         if filename.startswith('deposits_'):
             return 'Deposit'
+        if filename in ['state.ssz_snappy', 'genesis.ssz_snappy']:
+            return 'BeaconState'
 
     # Light client tests - data_collection test suite
     if test_type == 'light_client' and test_suite == 'data_collection':
