@@ -98,6 +98,14 @@ def main():
         print()
         print(f"Total: {results['missing_count']} files missing YAML companions")
         print()
+
+        # Output individual file paths
+        print("Individual files missing YAML companions:")
+        print("=" * 80)
+        for file_path in sorted(results['missing_files']):
+            print(f"{tests_dir}/{file_path}")
+
+        print()
         print("Run deserialize_missing.js to generate missing YAML files:")
         print(f"  node scripts/deserialize_missing.js {version}")
     else:
