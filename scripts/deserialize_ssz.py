@@ -18,6 +18,18 @@ from pathlib import Path
 # Import the debug tools from consensus-specs
 from eth2spec.debug.tools import get_ssz_object_from_ssz_encoded, output_ssz_to_file
 
+# Import SSZ types for defining Deltas
+from remerkleable.complex import Container, List
+from remerkleable.basic import uint64
+
+# Import VALIDATOR_REGISTRY_LIMIT constant from specs
+from eth2spec.phase0.mainnet import VALIDATOR_REGISTRY_LIMIT
+
+# Define Deltas type for rewards tests (as specified in tests/formats/rewards/README.md)
+class Deltas(Container):
+    rewards: List[uint64, VALIDATOR_REGISTRY_LIMIT]
+    penalties: List[uint64, VALIDATOR_REGISTRY_LIMIT]
+
 
 def load_previous_fork_mapping():
     """
@@ -163,6 +175,14 @@ def parse_ssz_path(file_path: Path):
     if test_type == 'ssz_static':
         # For ssz_static, test_suite IS the type name
         type_name = test_suite
+    elif test_type in ['light_client', 'merkle_proof'] and test_suite == 'single_merkle_proof' and filename == 'object.ssz_snappy':
+        # For light_client/single_merkle_proof and merkle_proof/single_merkle_proof:
+        # Path format: .../light_client/single_merkle_proof/{TypeName}/test_name/object.ssz_snappy
+        # The TypeName is at parts[tests_idx + 5]
+        if len(parts) > tests_idx + 5:
+            type_name = parts[tests_idx + 5]
+        else:
+            raise ValueError(f"Path too short for light_client/merkle_proof single_merkle_proof test: {file_path}")
     else:
         # For other test types, derive the type name from test_suite
         # Common mappings based on test format specifications
@@ -193,6 +213,35 @@ def derive_type_from_suite(test_type: str, test_suite: str, filename: str) -> st
     # signed_envelope.ssz_snappy is always SignedExecutionPayloadEnvelope
     if filename == 'signed_envelope.ssz_snappy':
         return 'SignedExecutionPayloadEnvelope'
+
+    # Fork choice tests (also used by sync tests)
+    if test_type in ['fork_choice', 'sync']:
+        if filename == 'anchor_state.ssz_snappy':
+            return 'BeaconState'
+        if filename == 'anchor_block.ssz_snappy':
+            return 'BeaconBlock'  # Unsigned
+        if filename.startswith('block_'):
+            return 'SignedBeaconBlock'
+        if filename.startswith('attestation_'):
+            return 'Attestation'
+        if filename.startswith('attester_slashing_'):
+            return 'AttesterSlashing'
+        if filename.startswith('pow_block_'):
+            return 'PowBlock'
+
+    # Light client and merkle proof tests with object.ssz_snappy
+    if test_type in ['light_client', 'merkle_proof']:
+        if test_suite == 'single_merkle_proof' and filename == 'object.ssz_snappy':
+            # Type is determined from the parent directory name
+            # Path format: .../single_merkle_proof/{TypeName}/test_name/object.ssz_snappy
+            # The test_suite in parse_ssz_path is actually the next level, which should be the type
+            # But we need to extract it differently - this will be handled in parse_ssz_path
+            pass  # Will be handled specially in parse_ssz_path
+
+    # Rewards tests - deltas files
+    if test_type == 'rewards':
+        if filename.endswith('_deltas.ssz_snappy'):
+            return 'Deltas'
 
     # Check filename patterns - these apply across multiple test types
     # In operations/block_header and operations/execution_payload_bid, block.ssz_snappy is BeaconBlock (unsigned)
@@ -242,6 +291,10 @@ def get_ssz_type_class(preset: str, fork: str, type_name: str):
     Returns:
         The SSZ type class
     """
+    # Special case: Deltas is a test-only type from rewards tests (defined at top of this file)
+    if type_name == 'Deltas':
+        return Deltas
+
     # Handle 'general' preset - it uses mainnet types
     if preset == 'general':
         preset = 'mainnet'
