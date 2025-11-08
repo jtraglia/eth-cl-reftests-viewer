@@ -739,6 +739,11 @@ input:checked + .toggle-slider:before {
   display: none !important;
 }
 
+/* Tree filtering - hide filtered-out nodes */
+.tree-node.tree-filtered {
+  display: none;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 8px;

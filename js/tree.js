@@ -8,6 +8,16 @@ let selectedPresets = new Set();
 let selectedForks = new Set();
 let selectedRunners = new Set();
 
+// Cache for DOM queries
+let cachedTreeNodes = null;
+let cachedPresetButtons = null;
+let cachedForkButtons = null;
+let cachedRunnerButtons = null;
+let cachedPresetTreeNodes = null; // Cache for top-level preset nodes
+
+// Debounce timer for filters
+let filterTimeout = null;
+
 /**
  * Build the tree navigation from manifest
  */
@@ -38,6 +48,13 @@ export function buildTree(manifest, onTestSelect) {
 
     treeContainer.appendChild(presetNode);
   }
+
+  // Invalidate DOM caches
+  cachedTreeNodes = null;
+  cachedPresetButtons = null;
+  cachedForkButtons = null;
+  cachedRunnerButtons = null;
+  cachedPresetTreeNodes = null;
 }
 
 /**
@@ -67,7 +84,7 @@ function buildPresetFilters(manifest) {
       } else {
         // Clear all other preset selections
         selectedPresets.clear();
-        document.querySelectorAll('.preset-filter-btn').forEach(b => b.classList.remove('active'));
+        getPresetButtons().forEach(b => b.classList.remove('active'));
 
         selectedPresets.add(preset);
         btn.classList.add('active');
@@ -129,7 +146,7 @@ function buildForkFilters(manifest) {
       } else {
         // Clear all other fork selections
         selectedForks.clear();
-        document.querySelectorAll('.fork-filter-btn').forEach(b => b.classList.remove('active'));
+        getForkButtons().forEach(b => b.classList.remove('active'));
 
         selectedForks.add(fork);
         btn.classList.add('active');
@@ -176,7 +193,7 @@ function buildRunnerFilters(manifest) {
       } else {
         // Clear all other runner selections
         selectedRunners.clear();
-        document.querySelectorAll('.runner-filter-btn').forEach(b => b.classList.remove('active'));
+        getRunnerButtons().forEach(b => b.classList.remove('active'));
 
         selectedRunners.add(runner);
         btn.classList.add('active');
@@ -417,6 +434,56 @@ function toggleNode(container, icon) {
 }
 
 /**
+ * Get cached tree nodes
+ */
+function getTreeNodes() {
+  if (!cachedTreeNodes) {
+    cachedTreeNodes = document.querySelectorAll('.tree-node');
+  }
+  return cachedTreeNodes;
+}
+
+/**
+ * Get cached top-level preset tree nodes
+ */
+function getPresetTreeNodes() {
+  if (!cachedPresetTreeNodes) {
+    cachedPresetTreeNodes = document.querySelectorAll('.tree-node[data-type="preset"]');
+  }
+  return cachedPresetTreeNodes;
+}
+
+/**
+ * Get cached preset buttons
+ */
+function getPresetButtons() {
+  if (!cachedPresetButtons) {
+    cachedPresetButtons = document.querySelectorAll('.preset-filter-btn');
+  }
+  return cachedPresetButtons;
+}
+
+/**
+ * Get cached fork buttons
+ */
+function getForkButtons() {
+  if (!cachedForkButtons) {
+    cachedForkButtons = document.querySelectorAll('.fork-filter-btn');
+  }
+  return cachedForkButtons;
+}
+
+/**
+ * Get cached runner buttons
+ */
+function getRunnerButtons() {
+  if (!cachedRunnerButtons) {
+    cachedRunnerButtons = document.querySelectorAll('.runner-filter-btn');
+  }
+  return cachedRunnerButtons;
+}
+
+/**
  * Update button states based on available data
  */
 function updateButtonStates() {
@@ -428,7 +495,7 @@ function updateButtonStates() {
   const selectedRunner = selectedRunners.size > 0 ? Array.from(selectedRunners)[0] : null;
 
   // Update fork buttons based on selected preset/runner
-  const forkButtons = document.querySelectorAll('.fork-filter-btn');
+  const forkButtons = getForkButtons();
   if (selectedPreset || selectedRunner) {
     const availableForks = new Set();
 
@@ -466,7 +533,7 @@ function updateButtonStates() {
   }
 
   // Update runner buttons based on selected preset/fork
-  const runnerButtons = document.querySelectorAll('.runner-filter-btn');
+  const runnerButtons = getRunnerButtons();
   if (selectedPreset || selectedFork) {
     const availableRunners = new Set();
 
@@ -501,7 +568,7 @@ function updateButtonStates() {
   }
 
   // Update preset buttons based on selected fork/runner
-  const presetButtons = document.querySelectorAll('.preset-filter-btn');
+  const presetButtons = getPresetButtons();
   if (selectedFork || selectedRunner) {
     const availablePresets = new Set();
 
@@ -538,33 +605,59 @@ function updateButtonStates() {
  * Apply combined filters (search + forks)
  */
 function applyFilters() {
-  const searchInput = document.getElementById('searchInput');
-  const searchTerm = searchInput.value.trim().toLowerCase();
-  updateButtonStates();
-  filterTree(searchTerm);
+  // Defer filter work to next frame for immediate button feedback
+  requestAnimationFrame(() => {
+    const searchInput = document.getElementById('searchInput');
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    updateButtonStates();
+    filterTree(searchTerm);
+  });
 }
 
 /**
  * Filter tree based on search term, selected presets, selected forks, and selected runners
  */
 export function filterTree(searchTerm) {
-  const allNodes = document.querySelectorAll('.tree-node');
+  const allNodes = getTreeNodes();
 
   // If no filters active, show all
   if (!searchTerm && selectedPresets.size === 0 && selectedForks.size === 0 && selectedRunners.size === 0) {
     allNodes.forEach(node => {
-      node.style.display = '';
+      node.classList.remove('tree-filtered');
     });
     return;
   }
 
-  // Hide all nodes initially
+  // Fast path: if ONLY preset filter is active, just show/hide top-level preset nodes
+  if (!searchTerm && selectedPresets.size > 0 && selectedForks.size === 0 && selectedRunners.size === 0) {
+    const selectedPreset = Array.from(selectedPresets)[0];
+    const presetNodes = getPresetTreeNodes();
+
+    // Show/hide top-level preset nodes (just 3: general, minimal, mainnet)
+    for (const node of presetNodes) {
+      const nodePreset = node.dataset.preset;
+      if (nodePreset === selectedPreset) {
+        node.classList.remove('tree-filtered');
+
+        // Ensure all children of selected preset are visible
+        const childNodes = node.querySelectorAll('.tree-node');
+        childNodes.forEach(child => child.classList.remove('tree-filtered'));
+      } else {
+        node.classList.add('tree-filtered');
+      }
+    }
+    return;
+  }
+
+  // Full filtering for complex queries
+  // Mark all nodes as filtered initially
   allNodes.forEach(node => {
-    node.style.display = 'none';
+    node.classList.add('tree-filtered');
   });
 
   // Find matching nodes based on filters
-  const matchingNodes = Array.from(allNodes).filter(node => {
+  const matchingNodes = [];
+  for (const node of allNodes) {
     // Check search term
     const label = node.dataset.label;
     const matchesSearch = !searchTerm || (label && label.includes(searchTerm));
@@ -581,23 +674,35 @@ export function filterTree(searchTerm) {
     const runner = node.dataset.runner;
     const matchesRunner = selectedRunners.size === 0 || (runner && selectedRunners.has(runner));
 
-    return matchesSearch && matchesPreset && matchesFork && matchesRunner;
-  });
+    if (matchesSearch && matchesPreset && matchesFork && matchesRunner) {
+      matchingNodes.push(node);
+    }
+  }
 
-  // Show matching nodes and their ancestors
-  matchingNodes.forEach(node => {
-    showNodeAndAncestors(node);
-  });
+  // Track processed nodes to avoid redundant work
+  const processedNodes = new Set();
+
+  // Show matching nodes and their ancestors (batch with classList)
+  for (const node of matchingNodes) {
+    showNodeAndAncestors(node, processedNodes);
+  }
 }
 
 /**
  * Show a node and all its ancestors
  */
-function showNodeAndAncestors(node) {
+function showNodeAndAncestors(node, processedNodes) {
   let current = node;
 
   while (current && current.classList.contains('tree-node')) {
-    current.style.display = '';
+    // Skip if already processed
+    if (processedNodes.has(current)) {
+      break;
+    }
+    processedNodes.add(current);
+
+    // Remove filtered class to show the node
+    current.classList.remove('tree-filtered');
 
     // Expand children container if collapsed
     const children = current.querySelector(':scope > .tree-children');
