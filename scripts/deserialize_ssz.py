@@ -468,6 +468,8 @@ def main():
     except (ValueError, AttributeError, ImportError) as e:
         # These are expected errors for tests that can't be deserialized
         # (e.g., ssz_generic tests, tests with unknown types, etc.)
+        # Print the reason for debugging
+        print(f"Skipping file: {e}", file=sys.stderr)
         # Exit with code 2 to indicate "skip this file"
         sys.exit(2)
     except Exception as e:
