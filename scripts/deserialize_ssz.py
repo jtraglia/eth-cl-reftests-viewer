@@ -195,16 +195,18 @@ def parse_ssz_path(file_path: Path):
                 if epoch_or_slot is None:
                     raise ValueError(f"Could not find epoch number in filename '{filename}'")
 
-                # Read config.yaml to get fork epoch boundaries and slots per epoch
+                # Read config.yaml to get fork epoch boundaries
                 config_path = file_path.parent / 'config.yaml'
                 if config_path.exists():
                     with open(config_path, 'r') as f:
                         config = yaml.safe_load(f)
 
+                    # Get SLOTS_PER_EPOCH from config or preset
+                    # Mainnet: 32, Minimal: 8
+                    preset_base = config.get('PRESET_BASE', 'mainnet').lower()
+                    slots_per_epoch = 8 if preset_base == 'minimal' else 32
+
                     # Convert slot to epoch (light_client files use slot numbers)
-                    # Slots per epoch is typically 32 for mainnet, 4 or 8 for minimal
-                    # We can infer from DENEB_FORK_EPOCH and the blocks present
-                    slots_per_epoch = 4  # Minimal preset typically uses 4 slots per epoch
                     epoch = epoch_or_slot // slots_per_epoch
 
                     # Get test case name from path (e.g., deneb_electra_reorg_aligned)
@@ -217,14 +219,24 @@ def parse_ssz_path(file_path: Path):
                             fork_names.append(potential_fork)
 
                     if len(fork_names) >= 1:
-                        # For light_client tests, use the FIRST fork in the test name
-                        # Light client structures may not change between forks even if the test
-                        # spans multiple forks (e.g., deneb_electra tests use Deneb structures throughout)
-                        selected_fork = fork_names[0]
+                        # Determine which fork to use based on the epoch and fork boundaries
+                        # Check each fork in the test name against config fork epochs
+                        selected_fork = fork_names[0]  # Default to first fork
+
+                        for fork_name in fork_names:
+                            fork_epoch_key = f"{fork_name.upper()}_FORK_EPOCH"
+                            if fork_epoch_key in config:
+                                fork_epoch = config[fork_epoch_key]
+                                if epoch >= fork_epoch:
+                                    # This fork has activated, use it
+                                    selected_fork = fork_name
+                                else:
+                                    # This fork hasn't activated yet, stop checking
+                                    break
 
                         if selected_fork != fork:
                             actual_fork = selected_fork
-                            print(f"Light client data_collection: test '{test_case}' uses fork '{actual_fork}' (directory fork: '{fork}')")
+                            print(f"Light client data_collection: test '{test_case}' at slot {epoch_or_slot} (epoch {epoch}), using fork '{actual_fork}' (directory fork: '{fork}')")
             except (ValueError, IndexError) as e:
                 print(f"Warning: Could not parse epoch from light_client filename '{filename}': {e}")
 
