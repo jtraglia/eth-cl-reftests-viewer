@@ -13,6 +13,19 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
+# Check for required dependencies
+if ! command -v node &> /dev/null; then
+  echo "Error: 'node' is not installed."
+  echo "Please install Node.js: https://nodejs.org/"
+  exit 1
+fi
+
+if ! command -v uv &> /dev/null; then
+  echo "Error: 'uv' is not installed."
+  echo "Please install uv: https://docs.astral.sh/uv/getting-started/installation/"
+  exit 1
+fi
+
 VERSION=$1
 LOGFILE="output_${VERSION}.txt"
 

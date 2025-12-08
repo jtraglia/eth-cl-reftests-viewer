@@ -7,7 +7,7 @@ A web-based viewer for browsing Ethereum consensus layer reference tests.
 Download and prepare a new test release:
 
 ```bash
-node scripts/prepare.js v1.6.0
+./download.sh v1.6.0
 ```
 
 This will:
