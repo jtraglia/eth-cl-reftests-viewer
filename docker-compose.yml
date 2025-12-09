@@ -1,12 +1,39 @@
 version: '3.8'
 
 services:
+  traefik:
+    image: traefik:v3
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=jtraglia@pm.me"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    restart: unless-stopped
+
   viewer:
     build: .
-    ports:
-      - "8080:80"
+    expose:
+      - "80"
     restart: unless-stopped
     volumes:
       - ./data:/usr/share/nginx/html/data:ro
     environment:
       - TZ=UTC
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.viewer.rule=Host(`tests.ethspec.tools`)"
+      - "traefik.http.routers.viewer.entrypoints=websecure"
+      - "traefik.http.routers.viewer.tls.certresolver=letsencrypt"
+
+volumes:
+  letsencrypt:
