@@ -51,7 +51,9 @@ body {
 .header-container {
   background-color: var(--header-bg);
   border-bottom: 1px solid var(--border-color);
-  padding: 1rem 2rem;
+  padding: 0 2rem;
+  height: 60px;
+  min-height: 60px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -59,6 +61,7 @@ body {
   top: 0;
   z-index: 100;
   box-shadow: 0 2px 4px var(--shadow);
+  flex-shrink: 0;
 }
 
 .header-left {
@@ -71,6 +74,7 @@ body {
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0;
+  line-height: 1;
 }
 
 .version-select {
