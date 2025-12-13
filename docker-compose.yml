@@ -31,7 +31,7 @@ services:
       - TZ=UTC
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.viewer.rule=Host(`tests.ethspec.tools`)"
+      - "traefik.http.routers.viewer.rule=Host(`ethspec.tools`)"
       - "traefik.http.routers.viewer.entrypoints=websecure"
       - "traefik.http.routers.viewer.tls.certresolver=letsencrypt"
 
